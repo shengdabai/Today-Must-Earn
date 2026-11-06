@@ -1,0 +1,328 @@
+/* 《今天也得赚钱》大字报风格
+   黑底 / 巨大字号 / 高对比 / 霓虹红黄 / 故意的丧 + 黑色幽默
+
+   TOKENS 是本文件唯一的设计值来源,方向说明见项目根目录 DESIGN.md。
+   层级:primitive(--p-*)→ semantic(--color-* 等)→ 规则只消费 semantic。
+   窗口应用不做响应式断点以外的适配,断点只有一处:1100px(全屏布局改单列),登记在文末 @media。 */
+
+:root {
+  /* —— primitive —— */
+  --p-black: #0a0a0a;
+  --p-gray-900: #141414;
+  --p-gray-800: #262626;
+  --p-gray-500: #8a8a82;
+  --p-paper-white: #f5f5f0;
+  --p-yellow: #ffd400;
+  --p-orange: #ff9d00;
+  --p-red: #ff2e2e;
+  --p-green: #18e08a;
+  --p-black-pure: #000;
+  --rgb-black: 10 10 10;
+  --rgb-pure-black: 0 0 0;
+  --rgb-red: 255 46 46;
+  --rgb-green: 24 224 138;
+
+  /* —— semantic:颜色 —— */
+  --color-bg: var(--p-black);
+  --color-surface: var(--p-gray-900);
+  --color-surface-overlay: rgb(var(--rgb-black) / 0.96);
+  --color-text: var(--p-paper-white);
+  --color-text-muted: var(--p-gray-500);
+  --color-border: var(--p-gray-800);
+  --color-money: var(--p-yellow);
+  --color-money-alt: var(--p-orange);
+  --color-on-money: var(--p-black-pure);
+  --color-danger: var(--p-red);
+  --color-good: var(--p-green);
+  --color-danger-tint: rgb(var(--rgb-red) / 0.08);
+  --color-danger-line: rgb(var(--rgb-red) / 0.3);
+  --color-good-tint: rgb(var(--rgb-green) / 0.08);
+  --color-good-line: rgb(var(--rgb-green) / 0.3);
+  --color-print-shadow: rgb(var(--rgb-red) / 0.22);
+  --color-toast-shadow: rgb(var(--rgb-pure-black) / 0.6);
+  --color-focus: var(--p-yellow);
+
+  /* —— semantic:字体与字号(全部为无衬线;数字用 tabular-nums,不用等宽体)—— */
+  --font-display: 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --text-2xs: 12px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 34px;
+  --text-4xl: 44px;
+  --text-amount-floating: 34px;
+  --text-amount-fullscreen: clamp(64px, 11vw, 168px);
+  --text-sub-fullscreen: clamp(18px, 2vw, 28px);
+  --text-roast-fullscreen: clamp(20px, 3vw, 40px);
+  --track-label: 0.1em;
+  --track-wide: 0.3em;
+  --track-tight: -0.03em;
+
+  /* —— semantic:形状 / 深度 —— */
+  --radius-tag: 2px;
+  --radius-control: 2px;
+  --radius-card: 4px;
+  --radius-window: 8px;
+  --border-thin: 1px;
+  --border-thick: 2px;
+  --border-accent: 3px;
+  --shadow-print: 4px 4px 0 var(--color-print-shadow);
+  --shadow-print-narrow: 3px 3px 0 var(--color-print-shadow);
+  --shadow-toast: 8px 8px 0 var(--color-toast-shadow);
+
+  /* —— semantic:间距 —— */
+  --space-0: 2px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --size-control: 40px;
+  --size-status-dot: 8px;
+  --size-bar: 14px;
+
+  /* —— semantic:动效 —— */
+  --dur-bar: 0.6s;
+  --dur-shake: 0.4s;
+  --dur-toast: 0.4s;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-display);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+:focus-visible { outline: var(--border-thick) solid var(--color-focus); outline-offset: var(--space-0); }
+
+/* 可拖动窗口区域(无边框窗口) */
+.drag { -webkit-app-region: drag; }
+.no-drag { -webkit-app-region: no-drag; }
+
+/* —— 通用大字 —— */
+.huge {
+  font-weight: 900;
+  letter-spacing: var(--track-tight);
+  line-height: 0.95;
+}
+
+/* 数字:同一套黑体 + 等宽数字宽度,避免跳动;不再使用等宽字体 */
+.mono { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 700; }
+
+.money { color: var(--color-money); }
+.danger { color: var(--color-danger); }
+.good { color: var(--color-good); }
+.muted { color: var(--color-text-muted); }
+
+/* 文字尺寸 / 间距小工具(替代组件里的内联样式) */
+.text-xs { font-size: var(--text-xs); }
+.text-sm { font-size: var(--text-sm); }
+.text-lg { font-size: var(--text-lg); }
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mb-1 { margin-bottom: var(--space-1); }
+.mb-5 { margin-bottom: var(--space-5); }
+.row-between { display: flex; justify-content: space-between; }
+.icon-btn { cursor: pointer; font-size: var(--text-lg); }
+
+/* —— 悬浮窗 —— */
+.floating {
+  height: 100%;
+  background: var(--color-surface-overlay);
+  border: var(--border-thick) solid var(--color-border);
+  border-radius: var(--radius-window);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow: hidden;
+}
+.floating.fishing { border-color: var(--color-danger); animation: shake var(--dur-shake); }
+
+.floating .label { font-size: var(--text-xs); color: var(--color-text-muted); letter-spacing: var(--track-label); }
+.floating .amount { font-size: var(--text-amount-floating); }
+.floating .rate { font-size: var(--text-xs); }
+.floating .roast {
+  font-size: var(--text-sm);
+  line-height: 1.3;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border-left: var(--border-accent) solid var(--color-danger);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-tag);
+  margin-top: auto;
+  /* 最多 2 行,绝不裁掉最值钱的贱文案(修审查 P0-1) */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.perm-hint { font-size: var(--text-xs); line-height: 1.3; opacity: 0.85; }
+.floating .status-dot { width: var(--size-status-dot); height: var(--size-status-dot); border-radius: 50%; display: inline-block; margin-right: var(--space-3); }
+
+/* —— 全屏大字报 —— */
+.fullscreen {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-5);
+  padding: var(--space-7) var(--space-8);
+  background: var(--color-bg);
+}
+.fs-header { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; }
+.fs-title { font-size: var(--text-xl); letter-spacing: var(--track-wide); color: var(--color-text-muted); }
+.fs-main { display: flex; flex-direction: column; justify-content: center; gap: var(--space-3); }
+/* 印刷错位阴影,强化大字报/海报质感(修审查 P2-1) */
+.fs-amount { font-size: var(--text-amount-fullscreen); text-shadow: var(--shadow-print); }
+.fs-sub { font-size: var(--text-sub-fullscreen); }
+.fs-side { display: flex; flex-direction: column; gap: var(--space-4); overflow-y: auto; }
+.fs-footer { grid-column: 1 / -1; }
+
+/* —— 卡片:硬边框,上沿一条黄色粗线,像贴在墙上的告示 —— */
+.card {
+  background: var(--color-surface);
+  border: var(--border-thin) solid var(--color-border);
+  border-top: var(--border-accent) solid var(--color-money);
+  border-radius: var(--radius-card);
+  padding: var(--space-4) var(--space-5);
+}
+.card h3 { font-size: var(--text-sm); color: var(--color-text-muted); letter-spacing: var(--track-label); margin-bottom: var(--space-3); font-weight: 700; }
+
+/* —— 进度条:方块条码质感,去 SaaS 圆角(修审查 P2-1) —— */
+.bar { height: var(--size-bar); background: var(--color-bg); border-radius: var(--radius-tag); overflow: hidden; border: var(--border-thin) solid var(--color-border); }
+.bar > i {
+  display: block; height: 100%; border-radius: var(--radius-tag); transition: width var(--dur-bar) ease;
+  background:
+    repeating-linear-gradient(45deg, var(--color-money) 0 6px, var(--color-money-alt) 6px 12px);
+}
+
+.dream { margin-bottom: var(--space-3); }
+.dream-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: var(--space-2); }
+.dream-name { font-size: var(--text-lg); font-weight: 700; }
+.dream-pct { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 700; font-size: var(--text-base); }
+
+/* —— 吐槽横幅 —— */
+.roast-banner {
+  font-size: var(--text-roast-fullscreen);
+  font-weight: 900;
+  line-height: 1.2;
+  color: var(--color-text);
+}
+.roast-banner.fishing { color: var(--color-danger); }
+
+/* —— 状态条 —— */
+.statusbar { display: flex; align-items: center; gap: var(--space-4); font-size: var(--text-md); }
+/* 状态牌:直角实心描边,不是胶囊 */
+.pill { padding: var(--space-1) var(--space-3); border-radius: var(--radius-tag); font-weight: 700; font-size: var(--text-sm); border: var(--border-thick) solid var(--color-border); }
+.pill.working { color: var(--color-good); border-color: var(--color-good); }
+.pill.fishing { color: var(--color-danger); border-color: var(--color-danger); }
+
+/* —— 成就 —— */
+.ach { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.ach .badge {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  border: var(--border-thin) solid var(--color-border); border-radius: var(--radius-tag);
+  padding: var(--space-2) var(--space-3); font-size: var(--text-sm); background: var(--color-bg);
+}
+/* 锁定态:虚线边框 + 提高透明度,不只靠透明度区分(修审查 P2-2) */
+.ach .badge.locked { opacity: 0.5; border-style: dashed; }
+
+/* —— 弹窗 / toast —— */
+.toast {
+  position: fixed; top: var(--space-6); left: 50%; transform: translateX(-50%);
+  background: var(--color-surface); border: var(--border-thick) solid var(--color-money);
+  border-radius: var(--radius-card); padding: var(--space-4) var(--space-6); max-width: 70%;
+  z-index: 100; box-shadow: var(--shadow-toast);
+  animation: drop var(--dur-toast) ease;
+}
+/* 未来的自己另锚到底部,避免和成就 toast 顶部重叠(修审查 P3-2) */
+.toast-future {
+  top: auto; bottom: var(--space-6); border-color: var(--color-danger);
+  animation: rise var(--dur-toast) ease;
+}
+.toast .from { font-size: var(--text-xs); color: var(--color-money); letter-spacing: var(--track-label); margin-bottom: var(--space-1); }
+.toast .body { font-size: var(--text-lg); line-height: 1.4; }
+
+/* —— 设置 —— */
+.settings { padding: var(--space-6); overflow-y: auto; height: 100%; }
+.settings .row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+.settings label { width: 140px; font-size: var(--text-base); color: var(--color-text-muted); }
+.settings input {
+  flex: 1; background: var(--color-surface); border: var(--border-thin) solid var(--color-border);
+  color: var(--color-text); padding: var(--space-2) var(--space-3); border-radius: var(--radius-control);
+  font-family: var(--font-display); font-variant-numeric: tabular-nums; font-size: var(--text-base);
+  min-height: var(--size-control);
+}
+.settings .input-emoji { width: 60px; flex: none; }
+.settings-title { font-size: var(--text-2xl); margin-bottom: var(--space-1); }
+.settings-sub { color: var(--color-text-muted); margin: var(--space-4) 0 var(--space-3); letter-spacing: var(--track-label); }
+.settings-actions { display: flex; gap: var(--space-3); margin-top: var(--space-5); }
+.btn {
+  background: var(--color-money); color: var(--color-on-money); border: none; font-weight: 800;
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-control); cursor: pointer; font-size: var(--text-base);
+  min-height: var(--size-control);
+}
+.btn.ghost { background: transparent; color: var(--color-text-muted); border: var(--border-thin) solid var(--color-border); }
+.btn:hover { filter: brightness(1.08); }
+
+/* —— 人生模拟器 —— */
+.sim { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.sim .col { border-radius: var(--radius-card); padding: var(--space-3); }
+.sim .col.fish { background: var(--color-danger-tint); border: var(--border-thin) solid var(--color-danger-line); }
+.sim .col.grind { background: var(--color-good-tint); border: var(--border-thin) solid var(--color-good-line); }
+.sim .col h4 { font-size: var(--text-sm); margin-bottom: var(--space-2); letter-spacing: var(--track-label); }
+.sim .col p { font-size: var(--text-sm); line-height: 1.45; color: var(--color-text); }
+
+/* —— meme 墙 —— */
+.meme { display: flex; align-items: center; gap: var(--space-3); }
+.meme .big { font-size: var(--text-4xl); }
+.meme .txt { font-size: var(--text-md); line-height: 1.35; }
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+@keyframes drop {
+  from { opacity: 0; transform: translate(-50%, -16px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* 全屏 footer:大字报横幅独立留白,人生模拟器下沉(修审查 P1-2) */
+.fs-footer { display: flex; flex-direction: column; gap: var(--space-4); }
+.roast-stage { padding: var(--space-1) var(--space-0); }
+
+/* 全屏响应式:窄屏单列堆叠,避免右栏出现"待办滚动框"违和(修审查 P1-1) */
+@media (max-width: 1100px) {
+  .fullscreen { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; gap: var(--space-4); padding: var(--space-6); }
+  .fs-amount { text-shadow: var(--shadow-print-narrow); }
+  .fs-side { flex-direction: row; flex-wrap: wrap; }
+  .fs-side > * { flex: 1 1 280px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating.fishing, .toast, .toast-future { animation: none; }
+  .bar > i { transition: none; }
+}
+
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: var(--radius-tag); }
