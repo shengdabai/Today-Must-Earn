@@ -206,3 +206,13 @@ test('working state cannot trigger a remote roast even when configured', async (
   assert.equal(await roast.makeRoast('working', {}), 'Local fixture')
   assert.equal(roast.calls.length, 0)
 })
+
+
+test('invalid persisted focus cannot corrupt the timer or earnings after restart', () => {
+  const day = new Date().toLocaleDateString('en-CA')
+  for (const value of [undefined, null, '30', {}, -1, NaN, Infinity]) {
+    assert.equal(incomeStore({ lastFocusDate: day, focusSecondsToday: value }).getFocusSeconds(), 0)
+  }
+  assert.equal(incomeStore({ lastFocusDate: day, focusSecondsToday: 30.5 }).getFocusSeconds(), 30.5)
+  assert.equal(incomeStore({ lastFocusDate: '2000-01-01', focusSecondsToday: 30 }).getFocusSeconds(), 0)
+})
