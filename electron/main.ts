@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, screen, nativeImage, powerMonitor } from 'electron'
-import { fileURLToPath } from 'node:url'
+import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron'
+import { fileURLToPath, pathToFileURL, URL } from 'node:url'
 import path from 'node:path'
 import {
   getConfig, setConfig, getUnlocked, setUnlocked,
@@ -16,8 +17,9 @@ import type { AppSnapshot, Config } from '../src/lib/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '..')
-const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
+const VITE_DEV_SERVER_URL = !app.isPackaged ? process.env.VITE_DEV_SERVER_URL : undefined
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+const RENDERER_URL = new URL(VITE_DEV_SERVER_URL || pathToFileURL(path.join(RENDERER_DIST, 'index.html')).href).href
 const PRELOAD = path.join(__dirname, 'preload.cjs') // CJS preload(见 vite.config.ts),沙箱渲染进程要求
 
 let win: BrowserWindow | null = null
@@ -59,9 +61,17 @@ function createWindow() {
       preload: PRELOAD,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   })
   win = createdWindow
+  // 此窗口只展示本地应用;页面不能导航、开新窗口或取得浏览器权限。
+  createdWindow.webContents.on('will-navigate', (e) => e.preventDefault())
+  createdWindow.webContents.on('will-frame-navigate', (e) => e.preventDefault())
+  createdWindow.webContents.on('will-redirect', (e) => e.preventDefault())
+  createdWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  createdWindow.webContents.session.setPermissionCheckHandler(() => false)
+  createdWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   createdWindow.on('closed', () => {
     // 旧窗口可能在新窗口创建后才关闭,不能清掉新窗口的引用。
     if (win === createdWindow) win = null
@@ -297,11 +307,29 @@ function buildSnapshot(): AppSnapshot {
   }
 }
 
-// —— IPC(入参全部硬校验,按不可信输入对待,修审查 M1/M2)——
+// 参数净化不能代替来源校验;只允许当前窗口的应用主文档调用 IPC。
+function isTrustedSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  if (!win || win.isDestroyed() || event.sender !== win.webContents ||
+      !event.senderFrame || event.senderFrame !== win.webContents.mainFrame) return false
+  try {
+    const url = new URL(event.senderFrame.url)
+    url.hash = ''
+    return url.href === RENDERER_URL
+  } catch {
+    return false
+  }
+}
+
+function assertTrustedSender(event: IpcMainInvokeEvent): void {
+  if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender')
+}
+
+// —— IPC(来源与入参均按不可信输入对待)——
 function registerIpc() {
-  ipcMain.handle('money:getSnapshot', () => buildSnapshot())
-  ipcMain.handle('money:getConfig', () => getConfig())
-  ipcMain.handle('money:setConfig', (_e, patch: Partial<Config>) => {
+  ipcMain.handle('money:getSnapshot', (e) => { assertTrustedSender(e); return buildSnapshot() })
+  ipcMain.handle('money:getConfig', (e) => { assertTrustedSender(e); return getConfig() })
+  ipcMain.handle('money:setConfig', (e, patch: Partial<Config>) => {
+    assertTrustedSender(e)
     const next = setConfig(patch) // setConfig 内部 sanitize
     clockGeneration++ // 旧采样不能继续按修改前的费率计时。
     fishGeneration++
@@ -310,11 +338,15 @@ function registerIpc() {
     void refreshCalendar().catch((err) => console.error('[calendar]', err))
     return next
   })
-  ipcMain.handle('money:setWorkMode', (_e, on: unknown) => setWorkMode(on === true))
-  ipcMain.handle('money:setOverlayMode', (_e, mode: unknown) => {
+  ipcMain.handle('money:setWorkMode', (e, on: unknown) => {
+    assertTrustedSender(e)
+    setWorkMode(on === true)
+  })
+  ipcMain.handle('money:setOverlayMode', (e, mode: unknown) => {
+    assertTrustedSender(e)
     if (mode === 'floating' || mode === 'fullscreen') switchOverlay(mode)
   })
-  ipcMain.on('money:quit', () => app.quit())
+  ipcMain.on('money:quit', (e) => { if (isTrustedSender(e)) app.quit() })
 }
 
 app.whenReady().then(async () => {

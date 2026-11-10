@@ -112,7 +112,8 @@ function today(): string {
 
 export function getFocusSeconds(): number {
   if (store.get('lastFocusDate') !== today()) return 0
-  return store.get('focusSecondsToday')
+  const value = store.get('focusSecondsToday')
+  return Number.isFinite(value) && value >= 0 ? value : 0
 }
 
 export function setFocusSeconds(sec: number): void {

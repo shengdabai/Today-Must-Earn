@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { deferred, loadTypeScript, settle } from './helpers/runtime.mjs'
 
-async function mainRuntime() {
+async function mainRuntime({ devServerURL, packaged = false } = {}) {
   let now = new Date('2026-10-29T12:00:00+08:00').getTime()
   class Clock extends Date {
     constructor(...args) { super(...(args.length ? args : [now])) }
@@ -30,21 +31,33 @@ async function mainRuntime() {
   const app = new EventEmitter()
   const powerMonitor = new EventEmitter()
   app.whenReady = () => Promise.resolve()
-  app.quit = () => {}
+  app.isPackaged = packaged
+  let quitCalls = 0
+  app.quit = () => { quitCalls++ }
   class Window extends EventEmitter {
     destroyed = false
     messages = []
     webContents = new EventEmitter()
-    constructor() {
+    constructor(options) {
       super()
+      this.options = options
+      this.webContents.mainFrame = { url: '' }
+      this.webContents.setWindowOpenHandler = (handler) => { this.openHandler = handler }
+      this.webContents.session = {
+        setPermissionCheckHandler: (handler) => { this.checkPermission = handler },
+        setPermissionRequestHandler: (handler) => { this.requestPermission = handler },
+      }
       this.webContents.send = (...args) => {
         if (this.destroyed) throw new Error('Object has been destroyed')
         this.messages.push(args)
       }
       windows.push(this)
     }
-    loadFile() { this.webContents.emit('did-finish-load') }
-    loadURL() { this.loadFile() }
+    loadFile(file) { this.loadURL(pathToFileURL(file).href) }
+    loadURL(url) {
+      this.webContents.mainFrame.url = url
+      this.webContents.emit('did-finish-load')
+    }
     isDestroyed() { return this.destroyed }
     close() { this.destroyed = true; this.emit('closed') }
     setAlwaysOnTop() {}
@@ -60,7 +73,7 @@ async function mainRuntime() {
   loadTypeScript('electron/main.ts', {
     electron: {
       app, BrowserWindow: Window, Tray, powerMonitor,
-      ipcMain: { handle: (name, callback) => handlers.set(name, callback), on() {} },
+      ipcMain: { handle: (name, callback) => handlers.set(name, callback), on: (name, callback) => handlers.set(name, callback) },
       Menu: { buildFromTemplate: (items) => items },
       screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1440, height: 900 } }) },
       nativeImage: { createEmpty: () => ({}) },
@@ -85,16 +98,22 @@ async function mainRuntime() {
     '../src/data/achievements': { resolveAchievements: () => ({ unlocked: [], newlyUnlocked: [] }) },
   }, {
     Date: Clock,
+    process: { env: { VITE_DEV_SERVER_URL: devServerURL }, platform: process.platform },
     setInterval: (callback, ms) => { intervals.set(ms, callback); return ms },
     console: { error: (...args) => errors.push(args) },
   })
   await settle()
   return {
     windows, errors,
-    invoke(name, ...args) { return handlers.get(`money:${name}`)({}, ...args) },
+    invokeAs(name, event, ...args) { return handlers.get(`money:${name}`)(event, ...args) },
+    invoke(name, ...args) {
+      const sender = windows.at(-1).webContents
+      return handlers.get(`money:${name}`)({ sender, senderFrame: sender.mainFrame }, ...args)
+    },
+    quitCalls: () => quitCalls,
     async tick(seconds = 1) { now += seconds * 1000; intervals.get(1000)(); await settle() },
     async refresh() { intervals.get(5 * 60 * 1000)(); await settle() },
-    snapshot() { return handlers.get('money:getSnapshot')() },
+    snapshot() { return this.invoke('getSnapshot') },
     monitor(state) { monitorState = { ...monitorState, ...state } },
     sample(callback) { monitorRead = callback },
     calendar(callback) { calendarRead = callback },
@@ -322,4 +341,76 @@ test('suspending after midnight cannot restore yesterday’s focus on wake', asy
   main.resume()
   await main.tick()
   assert.equal(main.flushFocus(), 1)
+})
+
+
+test('renderer windows deny navigation, popups and browser permissions', async () => {
+  const main = await mainRuntime()
+  const win = main.windows[0]
+  assert.equal(win.options.webPreferences.sandbox, true)
+  assert.equal(win.options.webPreferences.nodeIntegration, false)
+  assert.equal(win.options.webPreferences.contextIsolation, true)
+  for (const event of ['will-navigate', 'will-frame-navigate', 'will-redirect']) {
+    let denied = false
+    win.webContents.emit(event, { preventDefault() { denied = true } }, 'https://example.com')
+    assert.equal(denied, true, event)
+  }
+  assert.equal(win.openHandler({ url: 'https://example.com' }).action, 'deny')
+  assert.equal(win.checkPermission(), false)
+  let granted
+  win.requestPermission(win.webContents, 'media', (allowed) => { granted = allowed })
+  assert.equal(granted, false)
+})
+
+test('every IPC channel rejects foreign windows, subframes and unexpected documents', async () => {
+  const main = await mainRuntime()
+  const sender = main.windows[0].webContents
+  const trusted = { sender, senderFrame: sender.mainFrame }
+  const calls = [
+    ['getSnapshot'], ['getConfig'], ['setConfig', { monthlySalary: 1 }],
+    ['setWorkMode', false], ['setOverlayMode', 'fullscreen'],
+  ]
+  const assertDenied = (event) => {
+    for (const [channel, ...args] of calls) {
+      assert.throws(() => main.invokeAs(channel, event, ...args), /Untrusted IPC sender/, channel)
+    }
+    main.invokeAs('quit', event)
+    assert.equal(main.quitCalls(), 0)
+  }
+  assertDenied({ ...trusted, sender: {} })
+  assertDenied({ ...trusted, senderFrame: { url: sender.mainFrame.url } })
+  assertDenied({ ...trusted, senderFrame: null })
+  const url = sender.mainFrame.url
+  for (const untrusted of ['https://example.com', `${url}?other`, `${url}/other`, 'invalid']) {
+    sender.mainFrame.url = untrusted
+    assertDenied(trusted)
+  }
+  sender.mainFrame.url = `${url}#settings`
+  assert.equal(main.invokeAs('getConfig', trusted).monthlySalary, 3000)
+  main.invokeAs('quit', trusted)
+  assert.equal(main.quitCalls(), 1)
+})
+
+test('a replaced or closed window loses IPC access', async () => {
+  const main = await mainRuntime()
+  const old = main.windows[0].webContents
+  await main.invoke('setOverlayMode', 'fullscreen')
+  assert.throws(() => main.invokeAs('getSnapshot', { sender: old, senderFrame: old.mainFrame }), /Untrusted IPC sender/)
+  const current = main.windows[1].webContents
+  main.windows[1].close()
+  assert.throws(() => main.invokeAs('getConfig', { sender: current, senderFrame: current.mainFrame }), /Untrusted IPC sender/)
+})
+
+
+test('development IPC accepts only its exact document and packaged apps ignore the dev URL', async () => {
+  const devServerURL = 'http://127.0.0.1:5173/'
+  const dev = await mainRuntime({ devServerURL })
+  const sender = dev.windows[0].webContents
+  assert.equal(sender.mainFrame.url, devServerURL)
+  assert.equal(dev.snapshot().config.monthlySalary, 3000)
+  sender.mainFrame.url = `${devServerURL}other`
+  assert.throws(() => dev.snapshot(), /Untrusted IPC sender/)
+  const packaged = await mainRuntime({ devServerURL, packaged: true })
+  assert.ok(packaged.windows[0].webContents.mainFrame.url.startsWith('file:'))
+  assert.equal(packaged.snapshot().config.monthlySalary, 3000)
 })
